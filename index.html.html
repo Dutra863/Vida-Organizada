@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vida Organizada ULTRA</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
+<style>
+body{margin:0;font-family:Arial;background:#020617;color:white}
+header{text-align:center;padding:15px;font-size:22px;background:#020617}
+.container{padding:15px}
+button{width:100%;padding:12px;margin:5px 0;border:none;border-radius:10px;font-size:16px;cursor:pointer}
+.btn{background:#2563eb;color:white}
+.card{background:#0f172a;padding:12px;border-radius:12px;margin:8px 0}
+input{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}
+.hidden{display:none}
+.flex{display:flex;gap:10px}
+</style>
+</head>
+<body>
+<header>🔥 Vida Organizada ULTRA</header>
+
+<div class="container" id="login">
+<h3>Entrar</h3>
+<button class="btn" onclick="loginGoogle()">Entrar com Google</button>
+</div>
+
+<div class="container hidden" id="home">
+<button class="btn" onclick="show('planner')">🗓️ Planner</button>
+<button class="btn" onclick="show('financeiro')">💰 Financeiro</button>
+<button class="btn" onclick="show('metas')">🎯 Metas</button>
+<button class="btn" onclick="logout()">🚪 Sair</button>
+</div>
+
+<div class="container hidden" id="planner">
+<button onclick="show('home')">⬅</button>
+<input id="hora" type="time">
+<input id="tarefa" placeholder="Tarefa">
+<button class="btn" onclick="addAgenda()">Adicionar</button>
+<div id="agendaLista"></div>
+</div>
+
+<div class="container hidden" id="financeiro">
+<button onclick="show('home')">⬅</button>
+<input id="desc" placeholder="Descrição">
+<input id="valor" type="number" placeholder="Valor">
+<div class="flex">
+<button class="btn" onclick="addEntrada()">Entrada</button>
+<button class="btn" onclick="addGasto()">Gasto</button>
+</div>
+<h3>Saldo: R$ <span id="saldo">0</span></h3>
+<canvas id="grafico"></canvas>
+<div id="listaFinanceiro"></div>
+</div>
+
+<div class="container hidden" id="metas">
+<button onclick="show('home')">⬅</button>
+<input id="metaNome" placeholder="Meta">
+<input id="metaValor" type="number" placeholder="Valor">
+<button class="btn" onclick="addMeta()">Adicionar</button>
+<div id="listaMetas"></div>
+</div>
+
+<script>
+// 🔥 CONFIG FIREBASE (VOCÊ PRECISA COLOCAR SUA CONFIG AQUI)
+const firebaseConfig = {
+  apiKey: "SUA_KEY",
+  authDomain: "SEU_DOMINIO",
+  projectId: "SEU_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let userId = null;
+
+function loginGoogle(){
+ const provider = new firebase.auth.GoogleAuthProvider();
+ auth.signInWithPopup(provider);
+}
+
+auth.onAuthStateChanged(user=>{
+ if(user){
+   userId = user.uid;
+   document.getElementById('login').classList.add('hidden');
+   show('home');
+   carregarDados();
+ }
+});
+
+function logout(){auth.signOut();location.reload();}
+
+function show(t){['home','planner','financeiro','metas'].forEach(id=>document.getElementById(id).classList.add('hidden'));document.getElementById(t).classList.remove('hidden');}
+
+async function salvarDados(){
+ await db.collection('users').doc(userId).set({saldo,dados,agenda,metas});
+}
+
+async function carregarDados(){
+ let doc = await db.collection('users').doc(userId).get();
+ if(doc.exists){
+   let d = doc.data();
+   saldo=d.saldo||0;dados=d.dados||[];agenda=d.agenda||[];metas=d.metas||[];
+ }
+ render();
+}
+
+let saldo=0,dados=[],agenda=[],metas=[];
+
+function addEntrada(){let d=desc.value;let v=parseFloat(valor.value);if(!d||!v)return;saldo+=v;dados.push({d,v,type:'entrada'});salvarDados();render();}
+function addGasto(){let d=desc.value;let v=parseFloat(valor.value);if(!d||!v)return;saldo-=v;dados.push({d,v,type:'gasto'});salvarDados();render();}
+
+function addAgenda(){let h=hora.value;let t=tarefa.value;if(!h||!t)return;agenda.push({h,t});salvarDados();render();notificar(t,h);}
+function addMeta(){let n=metaNome.value;let v=metaValor.value;if(!n||!v)return;metas.push({nome:n,valor:v});salvarDados();render();}
+
+function render(){
+ document.getElementById('saldo').innerText=saldo.toFixed(2);
+ let lista=document.getElementById('listaFinanceiro');lista.innerHTML='';
+ let entradas=0,gastos=0;
+ dados.forEach(i=>{
+   let div=document.createElement('div');div.className='card';
+   div.innerText=`${i.d} - R$ ${i.v}`;
+   lista.appendChild(div);
+   i.type==='entrada'?entradas+=i.v:gastos+=i.v;
+ });
+
+ new Chart(document.getElementById('grafico'),{
+ type:'doughnut',
+ data:{labels:['Entradas','Gastos'],datasets:[{data:[entradas,gastos]}]}
+ });
+
+ let ag=document.getElementById('agendaLista');ag.innerHTML='';
+ agenda.forEach(a=>{
+   let div=document.createElement('div');div.className='card';
+   div.innerHTML=`${a.h} - ${a.t} <button onclick="exportarEvento('${a.t}')">📅</button>`;
+   ag.appendChild(div);
+ });
+
+ let m=document.getElementById('listaMetas');m.innerHTML='';
+ metas.forEach(meta=>{
+   let div=document.createElement('div');div.className='card';
+   div.innerText=`${meta.nome} - R$ ${meta.valor}`;
+   m.appendChild(div);
+ });
+}
+
+function notificar(t,h){
+ if(Notification.permission==='granted') new Notification('⏰ '+t+' às '+h);
+ else Notification.requestPermission();
+}
+
+function exportarEvento(titulo){
+ let conteudo=`BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:${titulo}\nEND:VEVENT\nEND:VCALENDAR`;
+ let blob=new Blob([conteudo],{type:'text/calendar'});
+ let link=document.createElement('a');
+ link.href=URL.createObjectURL(blob);
+ link.download='evento.ics';
+ link.click();
+}
+</script>
+</body>
+</html>
